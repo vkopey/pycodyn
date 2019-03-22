@@ -1,5 +1,5 @@
 # pycodyn
-Component-oriented modelling of dynamical systems in Python language on the example of the model of the sucker rod string.
+Component-oriented acausal modeling of the dynamical systems in Python language on the example of the model of the sucker rod string.
 For details click the link below.
 
 If you use pycodyn please cite the following reference in your work (books, articles, reports, etc.):
