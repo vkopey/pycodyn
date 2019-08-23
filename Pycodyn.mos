@@ -1,0 +1,8 @@
+loadModel(Modelica);
+loadFile("Pycodyn.mo");
+
+simulate(Pycodyn.Oscillator, stopTime=10,  outputFormat="csv");
+plot(mass1.s);
+
+simulate(Pycodyn.Pumping, stopTime=100);
+plotParametric(motion1.flange.s, spring1.flange_a.f);

@@ -1,4 +1,8 @@
-// © Volodymyr Kopei, 2017, email: vkopey@gmail.com
+//Copyright © Volodymyr Kopei, 2017, 2019 email: vkopey@gmail.com
+within;
+package Pycodyn
+extends Modelica.Icons.Package;
+
 connector Flange // class-connector
   Real s; // variable (positions at the flange are equal)
   flow Real f; // variable (sum of forces at the flange is zero)
@@ -45,12 +49,46 @@ equation // model equations
   flange_a.f = -f;
 end SpringDamper;
 
+model Motion // class-model
+  parameter Real A=2.1/2;
+  parameter Real n=6.4/60;
+  Flange flange; // object of class Flange
+equation // model equations 
+  flange.s = A*sin(6.283185307179586*n*time); 
+end Motion;
+
+model Force // class-model
+  Real f(start=0);
+  Flange flange; // object of class Flange
+equation // model equations 
+  flange.f = f; 
+end Force;
+
 model Oscillator // class-model
-  Mass mass1(s(start=-1), v(start=0), m=3402.0); // object with initial conditions
-  SpringDamper spring1(c=39694.0, d=1856.0); // object
+  Mass mass1(s(start=-1), v(start=0), m=3961.0); // object with initial conditions
+  SpringDamper spring1(c=44650.0, d=2120.7); // object
   Fixed fixed1(s0=0); // object
 equation // additional equations
   // creates a system of equations (see Flange class)
   connect(fixed1.flange, spring1.flange_a);
   connect(spring1.flange_b, mass1.flange_a);
 end Oscillator;
+
+model Pumping // class-model
+  Mass mass1(s(start=-0.9), v, m=3961.0); // object with initial conditions
+  SpringDamper spring1(c=44650.0, d=2120.7); // object
+  Motion motion1(A=2.1/2, n=6.4/60);
+  Force force1;
+equation // additional equations
+  connect(motion1.flange, spring1.flange_a);
+  connect(spring1.flange_b, mass1.flange_a);
+  connect(mass1.flange_b, force1.flange);
+algorithm
+  if mass1.v <= 0 then
+    force1.f:=34687.0;
+  else
+    force1.f:=34687.0+18499.0*tanh(abs(mass1.v )/0.01);
+  end if;
+end Pumping;
+
+end Pycodyn;

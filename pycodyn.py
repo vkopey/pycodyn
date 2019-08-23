@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Base classes for the easy-to-understand and modify component-oriented acausal hybrid modeling
-© Volodymyr Kopei, 2017, email: vkopey@gmail.com"""
+"""Base classes for the easy-to-understand and modify component-oriented acausal hybrid modeling.
+Difference equations with Euler method.
+Copyright © Volodymyr Kopei, 2017, 2019 email: vkopey@gmail.com"""
 
 from sympy import *
-import math
-import matplotlib
+import math, time
 import matplotlib.pyplot as plt
+
+def byName(d,name): # return value by symbol name
+    for k in d:
+        if repr(k)==name: return d[k]
 
 dt=0.1 # time step
 #dt=Symbol('dt') # only to obtain equations in a symbolic form
@@ -14,7 +18,7 @@ class Translational1D(object):
     """Base class of mechanical 1D components that have translational motion"""
     def __init__(self, name, args):
         self.name=name # component name
-        for k,v in args.iteritems(): # for each key-value pair
+        for k,v in args.items(): # for each key-value pair
             if k in ['name','self']: continue # except name and self
             if v==None: # if value is None
                 # create symbolic variable with name name+'_'+k
@@ -74,7 +78,7 @@ class System(object):
             self.eqs+=e.eqs # join with component equations
         self.eqs=self.eqs+eqs # join with additional equations
         
-    def solveN(self, eqs): # solves the static problem
+    def solveN(self, eqs): # solve alg. system by scipy
         import scipy.optimize
         eqs0=[]
         vrs=set()
@@ -90,38 +94,74 @@ class System(object):
         sol=scipy.optimize.root(f, goals, method='lm') 
         d=dict(zip(vrs,sol.x))
         return d
-                                           
-    def solve(self, ics): # solves the dynamic problem
+                                               
+    def solve(self, ics): # solve alg. system at t
         eqs=[e.subs(ics) for e in self.eqs] # substitution of ics
         eqs=[e for e in eqs if e not in (True,False)] # discard all degenerate equations
         # solve the system of equations by:
-        #sol=solve(eqs) # SymPy (slow)
+        #sol=nsolve(eqs) # SymPy (slow) #or solve
         sol=self.solveN(eqs) # SciPy (faster)
         sol.update(ics) # update dictionary by dictionary ics
-        return sol    
-    
-    def solveDyn(self, d, timeEnd, fnBC):
+        return sol
+        
+    def solv(self, preState): # solve by subs. to sympy expr.
+        state=preState.copy()
+        for k in self.ceqs: # current equations
+            state[k]=self.ceqs[k].subs(preState).evalf()
+            #assert type(state[k]) in [float,Float]
+        return state
+        
+    def solvN(self, preState): # same but by lambdafunction
+        #use Python 3.7 for fastest execution
+        state=preState.copy()
+        ls=dict([(repr(a),state[a]) for a in self.vrsp]) # arg. dict
+        res=self.ceqsf(**ls) # lambdafunction call
+        for a,v in zip([i[0] for i in self.ceqsi], res):
+            state[a]=v # update state
+        return state
+        
+    def createCurEqs(self, fnBC): # create current 'fast equations'
+        eqs=Tuple(*self.eqs)
+        vrs={i for i in eqs.atoms(Symbol) if repr(i)[-1]!='p'} # vars without 'p'
+        vrsbc=set(fnBC.vrs)
+        vrs=vrs-vrsbc # unknown vars at current step
+        self.ceqs=solve(eqs,vrs) # current expressions
+        self.vrsp={i for i in eqs.atoms(Symbol) if repr(i)[-1]=='p'} # vars with 'p'
+        self.vrsp.update(vrsbc) # known vars at current step
+        self.ceqsi=self.ceqs.items() # ordered expressions
+        self.ceqsf=lambdify(self.vrsp,[i[1] for i in self.ceqsi],'numpy') # current lambda function
+                         
+    def solveDyn(self, state, timeEnd, fnBC):
+        #solves the dynamic problem 
         t=0.0 # time variable
         T=[] # list of time values
         Res=[] # list of results
-        ics={} # dictionary with values of variables
-        while t<timeEnd: # while t < final time value
-            for e in self.els: # for each component
-                # save positions and velocities
-                if 'x' in e.__dict__:
-                    ics.update({e.xp:d[e.x]})
-                if 'x1' in e.__dict__:
-                    ics.update({e.x1p:d[e.x1]})
-                if 'x2' in e.__dict__:
-                    ics.update({e.x2p:d[e.x2]})
-                if 'v' in e.__dict__:
-                    ics.update({e.vp:d[e.v]})
-            ics.update(fnBC(self.elsd, d, t)) # update BC
-            d=self.solve(ics) # solve the problem
-            print t
+        
+        self.createCurEqs(fnBC)
+        ics={} # for self.solve()
+        start = time.time()
+        while t<timeEnd:
+            for k in state: # previous values "xp=x"...
+                if repr(k)[-1]=='p':
+                    state[k]=byName(state,repr(k)[:-1])
+                    ics[k]=byName(state,repr(k)[:-1]) # for self.solve()
+            
+            state.update(fnBC(state, t)) # update BC
+            #state=self.solv(state) # by sympy expression (slow)
+            state=self.solvN(state) # by numpy expression (fast)
+            
+            # ics.update(fnBC(state, t)) # update BC
+            # state=self.solve(ics) # by scipy.optimize.root (slow, for frequent events)
+            
+            print(t)
             T.append(t)
-            Res.append(d) # save results
+            Res.append(state) # save results
             t+=dt # increase time value
-            #if some_condition: # changing the system structure
-            #   self.__init__(new_els, new_eqs) 
+            
+            self.event(state) # event handler
+        end = time.time()
+        print('simulation time',end-start)
         return T,Res
+        
+    def event(self, state): # event handler
+        pass
